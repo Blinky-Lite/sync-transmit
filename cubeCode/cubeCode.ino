@@ -1,6 +1,8 @@
 #include <SPI.h>
 #include "RH_RF95.h"
- 
+
+#define BAUD_RATE 9600
+
 #define RFM95_CS 8
 #define RFM95_RST 4
 #define RFM95_INT 3
@@ -11,8 +13,6 @@
  
 // Singleton instance of the radio driver
 RH_RF95 rf95(RFM95_CS, RFM95_INT);
-
-String appName = "Clock Transmitter V3";
 byte transAddr = 23;
 unsigned long period = 70000;
 byte radiopacket[2];
@@ -22,10 +22,16 @@ byte timeLine[MAXNUMEVENTS];
 int ievent = 0;
 int numEvents = 14;
 int sigPower = 3;
-boolean goodCommand = false;
-boolean validData = false;
- 
-void setup() 
+
+struct TransmitData
+{
+};
+struct ReceiveData
+{
+  int loopDelay = 2000;
+};
+
+void setupPins()
 {
   pinMode(RFM95_RST, OUTPUT);
   digitalWrite(RFM95_RST, HIGH);
@@ -33,8 +39,6 @@ void setup()
   pinMode(12, OUTPUT);
   digitalWrite(11, LOW);
   digitalWrite(12, LOW);
-  
-  Serial.begin(9600);
   delay(100);
  
   // manual reset
@@ -54,7 +58,11 @@ void setup()
   for (ii = 0; ii < numEvents; ++ii) timeLine[ii] = 1;
   ievent = 0;
 }
-void loop() 
+void processNewSetting(TransmitData* tData, ReceiveData* rData, ReceiveData* newData)
+{
+  rData->loopDelay = newData->loopDelay;
+ }
+boolean processData(TransmitData* tData, ReceiveData* rData)
 {
   newTime = micros();
   if ((newTime - time) > period)
@@ -69,141 +77,76 @@ void loop()
     radiopacket[1] = timeLine[ievent];
     ++ievent;
     time = newTime;
-    checkSerial();
     rf95.setModeTx();
   }
+  return true;
 }
-void checkSerial()
-{
-  if (Serial.available())
-  {
-    String serialRead = readSerial();
-    goodCommand = false;
-    if (serialRead.lastIndexOf("aboutGet")      > -1) 
-    {
-      echoStringSetting("aboutGet", appName);
-      goodCommand = true;
-    }
-    if (serialRead.lastIndexOf("powerSet")      > -1) 
-    {
-      sigPower = newIntSetting("powerSet", serialRead, 0, 23);
-      rf95.setTxPower(sigPower, false);
-      printStringToSerial("Success: " + serialRead + "\n");
-      goodCommand = true;
-    }
-    if (serialRead.lastIndexOf("timelineSet")   > -1) 
-    {
-      validData = readTimeline(serialRead);
-      if (validData)
-      {
-        printStringToSerial("Success: " + serialRead + "\n");
-      }
-      else
-      {
-        printStringToSerial("Error Bad Data: " + serialRead + "\n");
-      }
-      goodCommand = true;
-    }
-    if (serialRead.lastIndexOf("addressSet")      > -1) 
-    {
 
-      transAddr = (byte) newIntSetting("addressSet", serialRead, 0, 255);
-      radiopacket[0] = transAddr;
-      printStringToSerial("Success: " + serialRead + "\n");
-      goodCommand = true;
+const int microLEDPin = 13;
+const int commLEDPin = 13;
+boolean commLED = true;
+
+struct TXinfo
+{
+  int cubeInit = 1;
+  int newSettingDone = 0;
+};
+struct RXinfo
+{
+  int newSetting = 0;
+};
+
+struct TX
+{
+  TXinfo txInfo;
+  TransmitData txData;
+};
+struct RX
+{
+  RXinfo rxInfo;
+  ReceiveData rxData;
+};
+TX tx;
+RX rx;
+ReceiveData settingsStorage;
+
+int sizeOfTx = 0;
+int sizeOfRx = 0;
+
+void setup()
+{
+  setupPins();
+  pinMode(microLEDPin, OUTPUT);    
+  pinMode(commLEDPin, OUTPUT);  
+  digitalWrite(commLEDPin, commLED);
+//  digitalWrite(microLEDPin, commLED);
+
+  sizeOfTx = sizeof(tx);
+  sizeOfRx = sizeof(rx);
+  Serial1.begin(BAUD_RATE);
+  delay(1000);
+}
+void loop()
+{
+  boolean goodData = false;
+  goodData = processData(&(tx.txData), &settingsStorage);
+  if (goodData)
+  {
+    tx.txInfo.newSettingDone = 0;
+    if(Serial1.available() > 0)
+    { 
+      commLED = !commLED;
+      digitalWrite(commLEDPin, commLED);
+      Serial1.readBytes((uint8_t*)&rx, sizeOfRx);
+      
+      if (rx.rxInfo.newSetting > 0)
+      {
+        processNewSetting(&(tx.txData), &settingsStorage, &(rx.rxData));
+        tx.txInfo.newSettingDone = 1;
+        tx.txInfo.cubeInit = 0;
+      }
     }
-    if (serialRead.lastIndexOf("freqSet")      > -1) 
-    {
-      float freq = newFloatSetting("freqSet", serialRead);
-      freq = 1000000.0 / freq;
-      freq = freq / 4;
-      int ifreq = freq * 4;
-      period = (unsigned long) ifreq;
-      printStringToSerial("Success: " + serialRead + "\n");
-      goodCommand = true;
-    }
-    if (!goodCommand)
-    {
-      printStringToSerial("Error: " + serialRead + "\n");
-      delay(100);
-      Serial.end();
-      delay(1);
-      Serial.begin(9600);
-    }
+    Serial1.write((uint8_t*)&tx, sizeOfTx);
   }
   
-}
-String readSerial()
-{
-  String inputString = "";
-  while(Serial.available() > 0)
-  {
-    char lastRecvd = Serial.read();
-    delay(1);
-    if (lastRecvd == '\n'){return inputString;} else {inputString += lastRecvd;}
-  }
-  return inputString;
-}
-void echoStringSetting(String getParse, String setting)
-{
-  printStringToSerial(getParse + " " + setting + "\n");
-}
-void echoIntSetting(String getParse, int setting)
-{
-  printStringToSerial(getParse + " " + String(setting) + "\n");
-}
-void printStringToSerial(String inputString)
-{
-  Serial.print(inputString);
-}
-int newIntSetting(String setParse, String input, int low, int high)
-{
-   String newSettingString = input.substring(input.lastIndexOf(setParse) + setParse.length() + 1,input.length());
-   int newSetting = constrain(newSettingString.toInt(),low,high);
-   return newSetting;
-}
-float newFloatSetting(String setParse, String input)
-{
-   String newSettingString = input.substring(input.lastIndexOf(setParse) + setParse.length() + 1,input.length());
-   char floatbuf[32];
-   newSettingString.toCharArray(floatbuf, sizeof(floatbuf));
-   return atof(floatbuf);
-}
-boolean readTimeline(String serialRead)
-{
-  String arg;
-  String remainder;
-  int i1;
-  remainder = serialRead;
-  remainder.trim();
-  i1 = remainder.indexOf(" ");
-  if (i1 < 0) return false;
-  remainder = remainder.substring(i1);
-  remainder.trim();
-  numEvents = 0;
-  while (i1 > 0)
-  {
-    i1 = remainder.indexOf(" ");
-    if (i1 > 0) 
-    {
-      arg = remainder.substring(0, i1);
-      remainder = remainder.substring(i1);
-      remainder.trim();
-    }
-    if (i1 < 0) 
-    {
-      arg = remainder;
-      remainder = "";
-    }
-    arg.trim();
-    timeLine[numEvents++] = (byte) arg.toInt();
-    if (numEvents > (MAXNUMEVENTS - 2) )
-    {
-       ievent = 0;
-       return true;
-    }
-//    Serial.print(numEvents); Serial.print("  "); Serial.println(timeLine[numEvents - 1]);
-  }
-  ievent = 0;
-  return true;
 }

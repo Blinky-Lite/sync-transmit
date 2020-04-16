@@ -5,7 +5,7 @@
 #define TRANSADDR 23
 #define MAXNUMEVENTS 64
 
-#define BAUD_RATE 9600
+#define BAUD_RATE 57600
 #define RFM95_CS 8
 #define RFM95_RST 4
 #define RFM95_INT 3

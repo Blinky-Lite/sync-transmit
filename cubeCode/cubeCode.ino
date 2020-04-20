@@ -3,7 +3,7 @@
 
 #define RF95_FREQ 434
 #define TRANSADDR 23
-#define MAXNUMEVENTS 64
+#define MAXNUMEVENTS 76
 
 #define BAUD_RATE 57600
 #define RFM95_CS 8
@@ -23,20 +23,22 @@ boolean pin12Value = true;
 
 struct TransmitData
 {
+  int extraInfo = 255;
 };
 struct ReceiveData
 {
-  byte timeLine[MAXNUMEVENTS];
   int numEvents = 10;
   int sigPower = 3;
   unsigned long intervalUs = 100000;
   unsigned long channelBeginTime[4];
   unsigned long channelEndTime[4];
   byte channelStateMask[4];
+  byte timeLine[MAXNUMEVENTS];
 };
 
 void setupPins(TransmitData* tData, ReceiveData* rData)
 {
+//  Serial.begin(9600);
   pinMode(RFM95_RST, OUTPUT);
   digitalWrite(RFM95_RST, HIGH);
   pinMode(12, OUTPUT);
@@ -81,6 +83,7 @@ void setupPins(TransmitData* tData, ReceiveData* rData)
 void processNewSetting(TransmitData* tData, ReceiveData* rData, ReceiveData* newData)
 {
   rData->numEvents = newData->numEvents;
+  rData->intervalUs = newData->intervalUs;
   for (int ii = 0; ii < rData->numEvents; ++ii) rData->timeLine[ii] = newData->timeLine[ii];
   for (int ic = 0; ic < 4; ++ic)
   {
@@ -98,6 +101,24 @@ void processNewSetting(TransmitData* tData, ReceiveData* rData, ReceiveData* new
   radiopacket[1] = newData->timeLine[0];
   radiopacket[2] = 1;
   ievent = 0;
+/*
+  Serial.print("numEvents: ");
+  Serial.println(rData->numEvents);
+  Serial.print("intervalUs: ");
+  Serial.println(rData->intervalUs);
+  Serial.print("sigPower: ");
+  Serial.println(rData->sigPower);
+  Serial.print("channelBeginTime1: ");
+  Serial.println(rData->channelBeginTime[0]);
+  Serial.print("channelEndTime1: ");
+  Serial.println(rData->channelEndTime[0]);
+  Serial.print("channelStateMask1: ");
+  Serial.println(rData->channelStateMask[0]);
+  Serial.print("timeline0: ");
+  Serial.println(rData->timeLine[0]);
+  Serial.print("timeline1: ");
+  Serial.println(rData->timeLine[1]);
+*/
 }
 boolean processData(TransmitData* tData, ReceiveData* rData)
 {
@@ -113,6 +134,7 @@ boolean processData(TransmitData* tData, ReceiveData* rData)
       timeLineRestart =  true;
       pin12Value = !pin12Value;
       digitalWrite(12, pin12Value);
+//      Serial.println("Timeline Restart");
     }
     radiopacket[1] = rData->timeLine[ievent];
     radiopacket[2] = 0;
@@ -187,14 +209,18 @@ void loop()
   if (goodData)
   {
     tx.txInfo.newSettingDone = 0;
+//    Serial.println("Checking to see if anything to read");
+
     if(Serial1.available() > 0)
     { 
-      commLED = !commLED;
-      digitalWrite(commLEDPin, commLED);
+//      Serial.println("Message from tray");
+//      commLED = !commLED;
+//      digitalWrite(commLEDPin, commLED);
       Serial1.readBytes((uint8_t*)&rx, sizeOfRx);
       
       if (rx.rxInfo.newSetting > 0)
       {
+//        Serial.println("Something to read");
         processNewSetting(&(tx.txData), &settingsStorage, &(rx.rxData));
         tx.txInfo.newSettingDone = 1;
         tx.txInfo.cubeInit = 0;

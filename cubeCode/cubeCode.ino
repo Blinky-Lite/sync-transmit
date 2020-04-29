@@ -29,6 +29,7 @@ struct ReceiveData
 {
   int numEvents = 10;
   int sigPower = 3;
+  int statusLedChannel = 0;
   unsigned long intervalUs = 100000;
   unsigned long channelBeginTime[4];
   unsigned long channelEndTime[4];
@@ -43,6 +44,8 @@ void setupPins(TransmitData* tData, ReceiveData* rData)
   digitalWrite(RFM95_RST, HIGH);
   pinMode(12, OUTPUT);
   digitalWrite(12, pin12Value);
+  pinMode(9, OUTPUT);
+  digitalWrite(9, false);
   for( int ic = 0; ic < 4; ++ic ) pinMode(channelPin[ic], OUTPUT);
   for( int ic = 0; ic < 4; ++ic ) digitalWrite(channelPin[ic], LOW);
 
@@ -73,17 +76,18 @@ void setupPins(TransmitData* tData, ReceiveData* rData)
   lastWriteTime = newTime;
   
 // Test data
-  rData->timeLine[0] = 3;
-  rData->timeLine[1] = 1;
-  rData->channelStateMask[0] = 2;
-  rData->channelBeginTime[0] = 11250;
-  rData->channelEndTime[0] = 12250;
+// rData->timeLine[0] = 3;
+//  rData->timeLine[1] = 1;
+//  rData->channelStateMask[0] = 2;
+//  rData->channelBeginTime[0] = 11250;
+//  rData->channelEndTime[0] = 12250;
 
 }
 void processNewSetting(TransmitData* tData, ReceiveData* rData, ReceiveData* newData)
 {
   rData->numEvents = newData->numEvents;
   rData->intervalUs = newData->intervalUs;
+  rData->statusLedChannel = newData->statusLedChannel;
   for (int ii = 0; ii < rData->numEvents; ++ii) rData->timeLine[ii] = newData->timeLine[ii];
   for (int ic = 0; ic < 4; ++ic)
   {
@@ -153,6 +157,7 @@ boolean processData(TransmitData* tData, ReceiveData* rData)
         channelHigh[ic] = true;
       }
     }
+    digitalWrite(9, channelHigh[rData->statusLedChannel]);
     digitalWrite(channelPin[ic], channelHigh[ic]);
   }  
   return timeLineRestart;
@@ -214,8 +219,8 @@ void loop()
     if(Serial1.available() > 0)
     { 
 //      Serial.println("Message from tray");
-//      commLED = !commLED;
-//      digitalWrite(commLEDPin, commLED);
+      commLED = !commLED;
+      digitalWrite(commLEDPin, commLED);
       Serial1.readBytes((uint8_t*)&rx, sizeOfRx);
       
       if (rx.rxInfo.newSetting > 0)

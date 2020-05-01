@@ -157,9 +157,9 @@ boolean processData(TransmitData* tData, ReceiveData* rData)
         channelHigh[ic] = true;
       }
     }
-    digitalWrite(9, channelHigh[rData->statusLedChannel]);
     digitalWrite(channelPin[ic], channelHigh[ic]);
   }  
+  digitalWrite(9, channelHigh[rData->statusLedChannel]);
   return timeLineRestart;
 }
 

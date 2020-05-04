@@ -1,18 +1,21 @@
 #include <SPI.h>
 #include "RH_RF95.h"
 
-#define RF95_FREQ 434
-#define TRANSADDR 23
 #define MAXNUMEVENTS 76
 
 #define BAUD_RATE 57600
 #define RFM95_CS 8
 #define RFM95_RST 4
 #define RFM95_INT 3
+
+RH_RF95::ModemConfigChoice modeConfig[] = {
+      RH_RF95::ModemConfigChoice::Bw125Cr45Sf128, 
+      RH_RF95::ModemConfigChoice::Bw500Cr45Sf128, 
+      RH_RF95::ModemConfigChoice::Bw31_25Cr48Sf512, 
+      RH_RF95::ModemConfigChoice::Bw125Cr48Sf4096};
  
 RH_RF95 rf95(RFM95_CS, RFM95_INT);
 byte radiopacket[3];
-byte transAddr = TRANSADDR;
 unsigned long newTime = 0;
 unsigned long lastWriteTime = 0;
 int ievent = 0;
@@ -30,6 +33,9 @@ struct ReceiveData
   int numEvents = 10;
   int sigPower = 3;
   int statusLedChannel = 0;
+  float rfFreq = 434.0;
+  int transAddr = 23;
+  int modemConfigIndex = 1;
   unsigned long intervalUs = 100000;
   unsigned long channelBeginTime[4];
   unsigned long channelEndTime[4];
@@ -57,8 +63,10 @@ void setupPins(TransmitData* tData, ReceiveData* rData)
   digitalWrite(RFM95_RST, HIGH);
   delay(10);
   rf95.init();
-  rf95.setFrequency(RF95_FREQ);
-  rf95.setModemConfig(RH_RF95::ModemConfigChoice::Bw500Cr45Sf128); 
+  rf95.setFrequency(rData->rfFreq);
+  rf95.setModemConfig(modeConfig[rData->modemConfigIndex]); 
+//  rf95.setModemConfig(RH_RF95::ModemConfigChoice::Bw500Cr45Sf128); 
+
   rf95.setModeTx();
   rf95.setTxPower(rData->sigPower, false);
   for (int ii = 0; ii < rData->numEvents; ++ii) rData->timeLine[ii] = 0;
@@ -69,18 +77,18 @@ void setupPins(TransmitData* tData, ReceiveData* rData)
     rData->channelStateMask[ic] = 0;
   }
   ievent = rData->numEvents - 1;
-  radiopacket[0] = transAddr;
+  radiopacket[0] = rData->transAddr;
   radiopacket[1] = rData->timeLine[ievent];
   radiopacket[2] = 0;
   newTime = micros();
   lastWriteTime = newTime;
   
 // Test data
-// rData->timeLine[0] = 3;
-//  rData->timeLine[1] = 1;
-//  rData->channelStateMask[0] = 2;
-//  rData->channelBeginTime[0] = 11250;
-//  rData->channelEndTime[0] = 12250;
+  rData->timeLine[0] = 1;
+  rData->timeLine[1] = 0;
+  rData->channelStateMask[0] = 1;
+  rData->channelBeginTime[0] = 1000;
+  rData->channelEndTime[0] = 51000;
 
 }
 void processNewSetting(TransmitData* tData, ReceiveData* rData, ReceiveData* newData)
@@ -88,6 +96,7 @@ void processNewSetting(TransmitData* tData, ReceiveData* rData, ReceiveData* new
   rData->numEvents = newData->numEvents;
   rData->intervalUs = newData->intervalUs;
   rData->statusLedChannel = newData->statusLedChannel;
+  rData->transAddr = newData->transAddr;
   for (int ii = 0; ii < rData->numEvents; ++ii) rData->timeLine[ii] = newData->timeLine[ii];
   for (int ic = 0; ic < 4; ++ic)
   {
@@ -101,7 +110,7 @@ void processNewSetting(TransmitData* tData, ReceiveData* rData, ReceiveData* new
     rData->sigPower = newData->sigPower;
     rf95.setTxPower(rData->sigPower, false);
   }
-  radiopacket[0] = transAddr;
+  radiopacket[0] = rData->transAddr;
   radiopacket[1] = newData->timeLine[0];
   radiopacket[2] = 1;
   ievent = 0;

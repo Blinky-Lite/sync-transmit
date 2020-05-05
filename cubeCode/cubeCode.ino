@@ -3,10 +3,13 @@
 
 #define MAXNUMEVENTS 76
 
-#define BAUD_RATE 57600
+#define BAUD_RATE 9600
 #define RFM95_CS 8
 #define RFM95_RST 4
 #define RFM95_INT 3
+
+boolean printDiagnostcs = false;
+boolean testPulses = false;
 
 RH_RF95::ModemConfigChoice modeConfig[] = {
       RH_RF95::ModemConfigChoice::Bw125Cr45Sf128, 
@@ -31,9 +34,9 @@ struct TransmitData
 struct ReceiveData
 {
   int numEvents = 10;
-  int sigPower = 3;
+  int sigPower = 5;
   int statusLedChannel = 0;
-  float rfFreq = 434.0;
+  float rfFreq = 433.3;
   int transAddr = 23;
   int modemConfigIndex = 1;
   unsigned long intervalUs = 100000;
@@ -45,7 +48,7 @@ struct ReceiveData
 
 void setupPins(TransmitData* tData, ReceiveData* rData)
 {
-//  Serial.begin(9600);
+  if (printDiagnostcs) Serial.begin(9600);
   pinMode(RFM95_RST, OUTPUT);
   digitalWrite(RFM95_RST, HIGH);
   pinMode(12, OUTPUT);
@@ -65,7 +68,6 @@ void setupPins(TransmitData* tData, ReceiveData* rData)
   rf95.init();
   rf95.setFrequency(rData->rfFreq);
   rf95.setModemConfig(modeConfig[rData->modemConfigIndex]); 
-//  rf95.setModemConfig(RH_RF95::ModemConfigChoice::Bw500Cr45Sf128); 
 
   rf95.setModeTx();
   rf95.setTxPower(rData->sigPower, false);
@@ -82,13 +84,22 @@ void setupPins(TransmitData* tData, ReceiveData* rData)
   radiopacket[2] = 0;
   newTime = micros();
   lastWriteTime = newTime;
-  
-// Test data
-  rData->timeLine[0] = 1;
-  rData->timeLine[1] = 0;
-  rData->channelStateMask[0] = 1;
-  rData->channelBeginTime[0] = 1000;
-  rData->channelEndTime[0] = 51000;
+
+  if (testPulses)
+  {
+  // Test data
+    rData->timeLine[0] = 1;
+    rData->timeLine[1] = 2;
+    rData->timeLine[2] = 4;
+    rData->timeLine[3] = 8;
+    rData->timeLine[4] = 16;
+    rData->timeLine[5] = 32;
+    rData->timeLine[6] = 64;
+    rData->timeLine[7] = 128;
+    rData->channelStateMask[0] = 1;
+    rData->channelBeginTime[0] = 10720;
+    rData->channelEndTime[0] = 15720;
+  }
 
 }
 void processNewSetting(TransmitData* tData, ReceiveData* rData, ReceiveData* newData)
@@ -110,28 +121,53 @@ void processNewSetting(TransmitData* tData, ReceiveData* rData, ReceiveData* new
     rData->sigPower = newData->sigPower;
     rf95.setTxPower(rData->sigPower, false);
   }
+
+  if (newData->rfFreq != rData->rfFreq)
+  {
+    rData->rfFreq = newData->rfFreq;
+    rf95.setFrequency(rData->rfFreq);
+  }
+
+  if (newData->modemConfigIndex != rData->modemConfigIndex)
+  {
+    rData->modemConfigIndex = newData->modemConfigIndex;
+    rf95.setModemConfig(modeConfig[rData->modemConfigIndex]); 
+  }
+
   radiopacket[0] = rData->transAddr;
   radiopacket[1] = newData->timeLine[0];
   radiopacket[2] = 1;
   ievent = 0;
-/*
-  Serial.print("numEvents: ");
-  Serial.println(rData->numEvents);
-  Serial.print("intervalUs: ");
-  Serial.println(rData->intervalUs);
-  Serial.print("sigPower: ");
-  Serial.println(rData->sigPower);
-  Serial.print("channelBeginTime1: ");
-  Serial.println(rData->channelBeginTime[0]);
-  Serial.print("channelEndTime1: ");
-  Serial.println(rData->channelEndTime[0]);
-  Serial.print("channelStateMask1: ");
-  Serial.println(rData->channelStateMask[0]);
-  Serial.print("timeline0: ");
-  Serial.println(rData->timeLine[0]);
-  Serial.print("timeline1: ");
-  Serial.println(rData->timeLine[1]);
-*/
+
+  if (printDiagnostcs) 
+  {
+    Serial.print("sigPower: ");
+    Serial.println(rData->sigPower);
+    Serial.print("rfFreq: ");
+    Serial.println(rData->rfFreq);
+    Serial.print("modemConfigIndex: ");
+    Serial.println(rData->modemConfigIndex);
+    Serial.print("numEvents: ");
+    Serial.println(rData->numEvents);
+    Serial.print("intervalUs: ");
+    Serial.println(rData->intervalUs);
+    Serial.print("statusLedChannel: ");
+    Serial.println(rData->statusLedChannel);
+    Serial.print("transAddr: ");
+    Serial.println(rData->transAddr);
+    Serial.print("channelBeginTime1: ");
+    Serial.println(rData->channelBeginTime[0]);
+    Serial.print("channelEndTime1: ");
+    Serial.println(rData->channelEndTime[0]);
+    Serial.print("channelStateMask1: ");
+    Serial.println(rData->channelStateMask[0]);
+    Serial.print("timeline0: ");
+    Serial.println(rData->timeLine[0]);
+    Serial.print("timeline1: ");
+    Serial.println(rData->timeLine[1]);
+    Serial.println();
+  }
+
 }
 boolean processData(TransmitData* tData, ReceiveData* rData)
 {
@@ -147,7 +183,7 @@ boolean processData(TransmitData* tData, ReceiveData* rData)
       timeLineRestart =  true;
       pin12Value = !pin12Value;
       digitalWrite(12, pin12Value);
-//      Serial.println("Timeline Restart");
+//      if (printDiagnostcs) Serial.println("Timeline Restart");
     }
     radiopacket[1] = rData->timeLine[ievent];
     radiopacket[2] = 0;
@@ -202,6 +238,7 @@ ReceiveData settingsStorage;
 
 int sizeOfTx = 0;
 int sizeOfRx = 0;
+unsigned long lastSerialCheck = micros();
 
 void setup()
 {
@@ -214,27 +251,25 @@ void setup()
   sizeOfTx = sizeof(tx);
   sizeOfRx = sizeof(rx);
   Serial1.begin(BAUD_RATE);
-  delay(1000);
 }
 void loop()
 {
-  boolean goodData = false;
-  goodData = processData(&(tx.txData), &settingsStorage);
-  if (goodData)
+  processData(&(tx.txData), &settingsStorage);
+  if ((micros() - lastSerialCheck) > 1000000)
   {
+//    Serial.println("Checking for data");
+    lastSerialCheck = micros();
     tx.txInfo.newSettingDone = 0;
-//    Serial.println("Checking to see if anything to read");
-
     if(Serial1.available() > 0)
     { 
-//      Serial.println("Message from tray");
+//      Serial.println("Data Available");
       commLED = !commLED;
       digitalWrite(commLEDPin, commLED);
       Serial1.readBytes((uint8_t*)&rx, sizeOfRx);
       
       if (rx.rxInfo.newSetting > 0)
       {
-//        Serial.println("Something to read");
+//        Serial.println("New Setting");
         processNewSetting(&(tx.txData), &settingsStorage, &(rx.rxData));
         tx.txInfo.newSettingDone = 1;
         tx.txInfo.cubeInit = 0;

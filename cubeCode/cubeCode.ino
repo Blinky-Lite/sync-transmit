@@ -1,7 +1,7 @@
 #include <SPI.h>
 #include "RH_RF95.h"
 
-#define MAXNUMEVENTS 76
+#define MAXNUMEVENTS 60
 
 #define BAUD_RATE 9600
 #define RFM95_CS 8
